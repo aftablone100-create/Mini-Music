@@ -1,0 +1,8 @@
+{
+  "appId": "com.aftablone100.minimusic",
+  "appName": "Mini Music",
+  "webDir": ".",
+  "server": {
+    "androidScheme": "https"
+  }
+}
