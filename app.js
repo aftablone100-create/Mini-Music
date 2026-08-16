@@ -55,11 +55,16 @@ const DB_NAME = "miniMusicDB";
 const DB_VERSION = 1;
 const STORE_NAME = "songs";
 
+let dbPromise = null;
+
 function openDB() {
 
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+
+  dbPromise = new Promise((resolve, reject) => {
 
     if (!("indexedDB" in window)) {
+      dbPromise = null;
       reject(new Error("IndexedDB not supported"));
       return;
     }
@@ -77,9 +82,15 @@ function openDB() {
     };
 
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error);
+    };
 
   });
+
+  return dbPromise;
 
 }
 
@@ -250,11 +261,15 @@ miniPlayBtn.addEventListener("click", event => {
 
   dragHandleWrap.addEventListener("touchstart", e => onStart(e.touches[0].clientY), { passive: true });
   dragHandleWrap.addEventListener("touchmove", e => onMove(e.touches[0].clientY), { passive: true });
-  dragHandleWrap.addEventListener("touchend", onEnd);
 
-  dragHandleWrap.addEventListener("mousedown", e => onStart(e.clientY));
-  window.addEventListener("mousemove", e => { if (dragging) onMove(e.clientY); });
-  window.addEventListener("mouseup", onEnd);
+  dragHandleWrap.addEventListener("touchend", e => {
+    // Prevent the browser from firing synthetic compatibility mouse
+    // events after this touch, which would otherwise restart the
+    // drag via a phantom mousedown and leave the "dragging" class
+    // stuck (breaking the open/close slide animation).
+    e.preventDefault();
+    onEnd();
+  });
 
 })();
 
@@ -295,6 +310,12 @@ fileInput.addEventListener("change", async event => {
 
   if (files.length === 0) return;
 
+  if (isLibraryLoading) {
+    showToast("Still loading your library — try again in a moment.");
+    fileInput.value = "";
+    return;
+  }
+
   setUploadLoading(true);
 
   let addedCount = 0;
@@ -329,7 +350,6 @@ fileInput.addEventListener("change", async event => {
         id: song.id,
         name: song.name,
         artist: song.artist,
-        blob: song.blob,
         url: URL.createObjectURL(song.blob),
         addedAt: song.addedAt
       });
@@ -402,6 +422,10 @@ function loadSong(index, autoplay = true) {
   updateLikeButton();
   updateMediaSession(song);
 
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = audio.paused ? "paused" : "playing";
+  }
+
   renderTracks(
     document.getElementById("searchInput").value
   );
@@ -416,7 +440,10 @@ function loadSong(index, autoplay = true) {
 
   }
 
-  savePlaybackState();
+  // Note: state is persisted by the play/pause/volume/shuffle/repeat
+  // handlers and the throttled timeupdate save — not here, since
+  // audio.currentTime is always 0 at this point (metadata hasn't
+  // loaded yet), which would overwrite a correct saved position.
 
 }
 
@@ -1315,7 +1342,20 @@ function updateMediaSession(song) {
 if ("mediaSession" in navigator) {
 
   navigator.mediaSession.setActionHandler("play", () => {
+
+    if (currentIndex === -1) {
+
+      if (songs.length === 0) return;
+
+      if (orderPos === -1) buildPlayOrder();
+
+      loadSong(playOrder[0]);
+
+      return;
+    }
+
     audio.play().catch(() => {});
+
   });
 
   navigator.mediaSession.setActionHandler("pause", () => {
@@ -1429,8 +1469,9 @@ function restorePlaybackState() {
     }
 
     if (typeof state.volume === "number" && !isNaN(state.volume)) {
-      audio.volume = state.volume;
-      volumeInput.value = state.volume;
+      const safeVolume = Math.min(1, Math.max(0, state.volume));
+      audio.volume = safeVolume;
+      volumeInput.value = safeVolume;
     }
 
   }
@@ -1491,6 +1532,8 @@ function escapeHTML(text = "") {
 async function initLibrary() {
 
   isLibraryLoading = true;
+  document.getElementById("uploadBtn").disabled = true;
+  document.getElementById("libraryUpload").disabled = true;
   renderTracks();
 
   try {
@@ -1503,7 +1546,6 @@ async function initLibrary() {
       id: s.id,
       name: s.name,
       artist: s.artist,
-      blob: s.blob,
       url: URL.createObjectURL(s.blob),
       addedAt: s.addedAt
     }));
@@ -1516,6 +1558,8 @@ async function initLibrary() {
   }
 
   isLibraryLoading = false;
+  document.getElementById("uploadBtn").disabled = false;
+  document.getElementById("libraryUpload").disabled = false;
 
   restorePlaybackState();
   renderTracks();
