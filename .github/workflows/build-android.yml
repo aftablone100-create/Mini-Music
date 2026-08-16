@@ -35,7 +35,7 @@ jobs:
           cordova create mini_app_v2 com.minimusic.appv2 "Mini Music Pro"
           cp index.html style.css app.js mini_app_v2/www/
           
-          # Add custom icon if icon.png exists
+          # Copy custom icon if present
           if [ -f "icon.png" ]; then
             cp icon.png mini_app_v2/www/icon.png
             sed -i '/<\/widget>/i \    <icon src="www/icon.png" \/>' mini_app_v2/config.xml
@@ -49,23 +49,30 @@ jobs:
           cd mini_app_v2
           cordova build android --debug
 
-      - name: Sign APK with Keytool & Zipalign
+      - name: Align and Sign APK (V2 Scheme)
         run: |
-          # Generate signing key
+          # Generate Signing Key
           keytool -genkey -v -keystore release.keystore \
             -alias minimusic -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass mypassword -keypass mypassword \
             -dname "CN=MiniMusic, OU=Dev, O=Dev, L=City, ST=State, C=US"
           
-          # Sign the generated APK
-          APK_PATH="mini_app_v2/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
-          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-            -keystore release.keystore -storepass mypassword \
-            $APK_PATH minimusic
+          # Locate build tools
+          BUILD_TOOLS_PATH=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          
+          # Zipalign the APK
+          $BUILD_TOOLS_PATH/zipalign -v 4 \
+            mini_app_v2/platforms/android/app/build/outputs/apk/debug/app-debug.apk \
+            aligned.apk
+            
+          # Sign using apksigner
+          $BUILD_TOOLS_PATH/apksigner sign --ks release.keystore \
+            --ks-pass pass:mypassword \
+            --out mini-music-pro.apk aligned.apk
 
-      - name: Upload APK Artifact
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
           name: mini-music-v2-apk
-          path: mini_app_v2/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          path: mini-music-pro.apk
           
