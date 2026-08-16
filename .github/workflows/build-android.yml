@@ -24,20 +24,44 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Cordova
-        run: npm install -g cordova
-
-      - name: Create & Build Cordova Project
+      - name: Create Keystore for Signed APK
         run: |
-          cordova create mini_app com.minimusic.app "Mini Music"
-          cp index.html style.css app.js mini_app/www/
-          cd mini_app
+          keytool -genkey -v -keystore release.keystore \
+            -alias minimusic -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass mypassword -keypass mypassword \
+            -dname "CN=MiniMusic, OU=Dev, O=Dev, L=City, ST=State, C=US"
+
+      - name: Install Cordova & Tools
+        run: |
+          npm install -g cordova cordova-res
+
+      - name: Create & Configure Cordova Project
+        run: |
+          # Change "mini_app_v2" and "com.minimusic.appv2" to make it a completely separate app
+          cordova create mini_app_v2 com.minimusic.appv2 "Mini Music Pro"
+          cp index.html style.css app.js mini_app_v2/www/
+          
+          # Copy custom icon if present
+          if [ -f "icon.png" ]; then
+            cp icon.png mini_app_v2/www/icon.png
+            echo '<icon src="www/icon.png" />' >> mini_app_v2/config.xml
+          fi
+
+          cd mini_app_v2
           cordova platform add android
-          cordova build android --debug
+
+      - name: Build Signed APK
+        run: |
+          cd mini_app_v2
+          cordova build android --release -- \
+            --keystore="../release.keystore" \
+            --storePassword="mypassword" \
+            --alias="minimusic" \
+            --password="mypassword"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mini-music-apk
-          path: mini_app/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+          name: mini-music-v2-apk
+          path: mini_app_v2/platforms/android/app/build/outputs/apk/release/app-release.apk
           
