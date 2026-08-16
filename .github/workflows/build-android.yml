@@ -13,36 +13,31 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Prepare Web Assets & Capacitor
-        run: |
-          mkdir www
-          cp index.html style.css app.js www/
-          npm init -y
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "Mini Music" "com.minimusic.app" --web-dir www
-          npx cap add android
-          npx cap copy android
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Build APK
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Create & Build Cordova Project
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          cordova create mini_app com.minimusic.app "Mini Music"
+          cp index.html style.css app.js mini_app/www/
+          cd mini_app
+          cordova platform add android
+          cordova build android --debug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: mini-music-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: mini_app/platforms/android/app/build/outputs/apk/debug/app-debug.apk
           
