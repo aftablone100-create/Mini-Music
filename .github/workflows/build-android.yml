@@ -31,20 +31,18 @@ jobs:
             -storepass mypassword -keypass mypassword \
             -dname "CN=MiniMusic, OU=Dev, O=Dev, L=City, ST=State, C=US"
 
-      - name: Install Cordova & Tools
-        run: |
-          npm install -g cordova cordova-res
+      - name: Install Cordova
+        run: npm install -g cordova
 
       - name: Create & Configure Cordova Project
         run: |
-          # Change "mini_app_v2" and "com.minimusic.appv2" to make it a completely separate app
           cordova create mini_app_v2 com.minimusic.appv2 "Mini Music Pro"
           cp index.html style.css app.js mini_app_v2/www/
           
-          # Copy custom icon if present
+          # Copy custom icon if present and configure config.xml
           if [ -f "icon.png" ]; then
             cp icon.png mini_app_v2/www/icon.png
-            echo '<icon src="www/icon.png" />' >> mini_app_v2/config.xml
+            sed -i '/<\/widget>/i \    <icon src="www/icon.png" />' mini_app_v2/config.xml
           fi
 
           cd mini_app_v2
