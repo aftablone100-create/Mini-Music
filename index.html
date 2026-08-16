@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+  <meta name="theme-color" content="#09090b">
+  <title>Mini Music</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <!-- TOP BAR -->
+    <header>
+      <div class="logo">
+        <div class="logo-icon">♫</div>
+        <span>Mini Music</span>
+      </div>
+
+      <div class="status">
+        <span></span>
+        Local
+      </div>
+    </header>
+
+
+    <!-- MAIN -->
+    <main>
+
+      <!-- HOME -->
+      <section id="home" class="page active-page">
+
+        <div class="hero">
+          <p class="eyebrow">A SMALL PLACE FOR SOUND</p>
+
+          <h1>
+            Good to have<br>
+            you here.
+          </h1>
+
+          <p class="subtitle">
+            Your music. Your device. No accounts.
+          </p>
+
+          <button class="primary-btn" id="uploadBtn">
+            <span class="btn-label">＋ Add music</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+
+          <input
+            type="file"
+            id="fileInput"
+            accept="audio/*"
+            multiple
+            hidden
+          >
+        </div>
+
+
+        <div class="cards">
+
+          <div class="music-card">
+            <div class="card-top">
+              <span>YOUR COLLECTION</span>
+              <span id="trackCount">00 TRACKS</span>
+            </div>
+
+            <div class="card-middle">
+              <div class="big-note">♫</div>
+
+              <h2>Your music,<br>in its own room.</h2>
+
+              <p>
+                Add your local audio files and start listening.
+              </p>
+            </div>
+          </div>
+
+
+          <div class="visual-card">
+            <p>NOW PLAYING</p>
+
+            <div class="wave" id="homeWave">
+              <i></i><i></i><i></i><i></i><i></i>
+              <i></i><i></i><i></i><i></i><i></i>
+              <i></i><i></i><i></i><i></i><i></i>
+            </div>
+
+            <strong id="homeNowPlaying">
+              Nothing playing
+            </strong>
+
+            <small id="homeArtist">
+              Add a song to begin
+            </small>
+          </div>
+
+        </div>
+
+
+        <div class="section-title">
+          <h2>Recently added</h2>
+          <button data-page="library">See all →</button>
+        </div>
+
+        <div id="homeTracks" class="track-list">
+          <div class="empty">
+            <div>♫</div>
+            <h3>Loading your library…</h3>
+            <p>One moment.</p>
+          </div>
+        </div>
+
+      </section>
+
+
+      <!-- SEARCH -->
+      <section id="search" class="page">
+
+        <div class="page-heading">
+          <p class="eyebrow">FIND SOMETHING</p>
+          <h1>Search.</h1>
+        </div>
+
+        <div class="search-box">
+          <span>⌕</span>
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search your music..."
+          >
+        </div>
+
+        <div id="searchTracks" class="track-list"></div>
+
+      </section>
+
+
+      <!-- LIBRARY -->
+      <section id="library" class="page">
+
+        <div class="page-heading">
+          <p class="eyebrow">YOUR COLLECTION</p>
+          <h1>Library.</h1>
+        </div>
+
+        <div class="library-actions">
+          <button class="filter active" id="allBtn">
+            All
+          </button>
+
+          <button class="filter" id="likedBtn">
+            ♥ Liked
+          </button>
+
+          <button class="primary-btn small" id="libraryUpload">
+            <span class="btn-label">＋ Add music</span>
+            <span class="btn-spinner" hidden></span>
+          </button>
+        </div>
+
+        <div id="libraryTracks" class="track-list">
+          <div class="empty">
+            <div>♫</div>
+            <h3>Loading your library…</h3>
+            <p>One moment.</p>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+
+    <!-- MINI PLAYER (tap to expand) -->
+    <button class="mini-player" id="miniPlayer" aria-label="Open full player">
+
+      <div class="mini-progress">
+        <div class="mini-progress-fill" id="miniProgressFill"></div>
+      </div>
+
+      <div class="mini-player-row">
+
+        <div class="mini-art" id="miniArt">
+          <span class="mini-art-icon">♫</span>
+          <span class="mini-spinner" id="miniSpinner" hidden></span>
+        </div>
+
+        <div class="mini-info">
+          <strong id="playerTitle">
+            Nothing playing
+          </strong>
+
+          <small id="playerArtist">
+            Add music to begin
+          </small>
+        </div>
+
+        <span
+          id="miniPlayBtn"
+          class="mini-play"
+          role="button"
+          aria-label="Play or pause"
+        >▶</span>
+
+      </div>
+
+    </button>
+
+
+    <!-- BOTTOM NAV -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-page="home">
+        <span>⌂</span>
+        <small>Home</small>
+      </button>
+
+      <button class="nav-btn" data-page="search">
+        <span>⌕</span>
+        <small>Search</small>
+      </button>
+
+      <button class="nav-btn" data-page="library">
+        <span>♫</span>
+        <small>Library</small>
+      </button>
+    </nav>
+
+
+    <!-- FULL-SCREEN PLAYER -->
+    <div class="full-player" id="fullPlayer">
+
+      <div class="drag-handle-wrap" id="dragHandleWrap">
+        <div class="drag-handle"></div>
+      </div>
+
+      <div class="full-player-header">
+        <button id="collapseBtn" class="collapse-btn" aria-label="Close player">⌄</button>
+        <span>NOW PLAYING</span>
+
+        <div class="header-right">
+          <button id="queueBtn" class="icon-btn" aria-label="Open queue">☰</button>
+          <button id="likeBtn" class="heart">♡</button>
+        </div>
+      </div>
+
+      <div class="full-art-wrap">
+        <div class="full-art" id="fullArt">
+          <span class="full-art-icon">♫</span>
+          <span class="full-spinner" id="fullSpinner" hidden></span>
+        </div>
+      </div>
+
+      <div class="full-info">
+        <strong id="fullPlayerTitle">Nothing playing</strong>
+        <small id="fullPlayerArtist">Add music to begin</small>
+      </div>
+
+      <div class="progress-area">
+        <input
+          id="progress"
+          type="range"
+          min="0"
+          max="100"
+          value="0"
+        >
+
+        <div class="time-row">
+          <span id="currentTime">0:00</span>
+          <span id="duration">0:00</span>
+        </div>
+      </div>
+
+      <div class="full-controls">
+        <button id="shuffleBtn" class="side-btn" aria-label="Shuffle">🔀</button>
+        <button id="prevBtn" aria-label="Previous">⏮</button>
+        <button id="playBtn" class="play" aria-label="Play or pause">▶</button>
+        <button id="nextBtn" aria-label="Next">⏭</button>
+        <button id="repeatBtn" class="side-btn" aria-label="Repeat">🔁</button>
+      </div>
+
+      <div class="volume">
+        <span>🔉</span>
+
+        <input
+          id="volume"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.8"
+        >
+      </div>
+
+
+      <!-- QUEUE SHEET -->
+      <div class="queue-sheet" id="queueSheet">
+
+        <div class="queue-sheet-header">
+          <span>UP NEXT</span>
+          <button id="closeQueueBtn" aria-label="Close queue">✕</button>
+        </div>
+
+        <div class="queue-list" id="queueList"></div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <audio id="audio" preload="metadata"></audio>
+
+  <script src="app.js"></script>
+
+</body>
+</html>
