@@ -24,12 +24,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Create Keystore for Signed APK
-        run: |
-          keytool -genkey -v -keystore release.keystore \
-            -alias minimusic -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass mypassword -keypass mypassword \
-            -dname "CN=MiniMusic, OU=Dev, O=Dev, L=City, ST=State, C=US"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install Cordova
         run: npm install -g cordova
@@ -39,27 +35,37 @@ jobs:
           cordova create mini_app_v2 com.minimusic.appv2 "Mini Music Pro"
           cp index.html style.css app.js mini_app_v2/www/
           
-          # Copy custom icon if present and configure config.xml
+          # Add custom icon if icon.png exists
           if [ -f "icon.png" ]; then
             cp icon.png mini_app_v2/www/icon.png
-            sed -i '/<\/widget>/i \    <icon src="www/icon.png" />' mini_app_v2/config.xml
+            sed -i '/<\/widget>/i \    <icon src="www/icon.png" \/>' mini_app_v2/config.xml
           fi
 
           cd mini_app_v2
           cordova platform add android
 
-      - name: Build Signed APK
+      - name: Build Debug APK
         run: |
           cd mini_app_v2
-          cordova build android --release -- \
-            --keystore="../release.keystore" \
-            --storePassword="mypassword" \
-            --alias="minimusic" \
-            --password="mypassword"
+          cordova build android --debug
+
+      - name: Sign APK with Keytool & Zipalign
+        run: |
+          # Generate signing key
+          keytool -genkey -v -keystore release.keystore \
+            -alias minimusic -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass mypassword -keypass mypassword \
+            -dname "CN=MiniMusic, OU=Dev, O=Dev, L=City, ST=State, C=US"
+          
+          # Sign the generated APK
+          APK_PATH="mini_app_v2/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
+          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore release.keystore -storepass mypassword \
+            $APK_PATH minimusic
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: mini-music-v2-apk
-          path: mini_app_v2/platforms/android/app/build/outputs/apk/release/app-release.apk
+          path: mini_app_v2/platforms/android/app/build/outputs/apk/debug/app-debug.apk
           
