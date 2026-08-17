@@ -1601,7 +1601,7 @@ initLibrary();
 
 // EDIT ME: point this at wherever you deploy the proxy in /server.
 // e.g. "https://mini-music-proxy.onrender.com"
-const YT_PROXY_BASE = "https://your-proxy-url.example.com";
+const YT_PROXY_BASE = "https://mini-music-api.onrender.com";
 
 const ytSearchBox = document.getElementById("ytSearchBox");
 const ytSearchInput = document.getElementById("ytSearchInput");
