@@ -1568,3 +1568,364 @@ async function initLibrary() {
 
 
 initLibrary();
+
+
+/* =========================================================
+   YOUTUBE — STEP 1: SEARCH + OFFICIAL EMBEDDED PLAYBACK
+   -----------------------------------------------------------
+   This block is intentionally self-contained. It does not read
+   or write any of the local-playback variables above (songs,
+   currentIndex, playOrder, orderPos, shuffle, repeatMode, etc.)
+   and does not touch the local mini-player / full-player / queue
+   sheet. YouTube videos are streamed only through the official
+   YouTube IFrame Player API — nothing is downloaded, extracted,
+   or cached.
+========================================================= */
+
+const YT_API_BASE = "https://www.googleapis.com/youtube/v3";
+const YT_KEY_STORAGE = "miniMusicYtApiKey";
+
+const ytKeyBox = document.getElementById("ytKeyBox");
+const ytApiKeyInput = document.getElementById("ytApiKeyInput");
+const ytSaveKeyBtn = document.getElementById("ytSaveKeyBtn");
+const ytChangeKeyBtn = document.getElementById("ytChangeKeyBtn");
+const ytSearchBox = document.getElementById("ytSearchBox");
+const ytSearchInput = document.getElementById("ytSearchInput");
+const ytResultsEl = document.getElementById("ytResults");
+const ytQueueTitleEl = document.getElementById("ytQueueTitle");
+const ytQueueListEl = document.getElementById("ytQueueList");
+const ytPlayerWrapEl = document.getElementById("ytPlayerWrap");
+const ytNowTitleEl = document.getElementById("ytNowTitle");
+const ytNowChannelEl = document.getElementById("ytNowChannel");
+
+let ytApiKey = localStorage.getItem(YT_KEY_STORAGE) || "";
+let ytLastResults = [];
+let ytQueue = [];
+let ytSearchTimer = null;
+
+let ytPlayer = null;
+let ytPlayerReady = false;
+let ytPendingVideoId = null;
+
+
+function ytEmptyHTML(title, text) {
+
+  return `
+    <div class="empty">
+      <div>▶</div>
+      <h3>${escapeHTML(title)}</h3>
+      <p>${escapeHTML(text)}</p>
+    </div>
+  `;
+
+}
+
+
+/* ---------- API key ---------- */
+
+function updateYtKeyUI() {
+
+  const hasKey = Boolean(ytApiKey);
+
+  ytKeyBox.hidden = hasKey;
+  ytSearchBox.hidden = !hasKey;
+  ytChangeKeyBtn.hidden = !hasKey;
+
+}
+
+
+ytSaveKeyBtn.addEventListener("click", () => {
+
+  const value = ytApiKeyInput.value.trim();
+
+  if (!value) {
+    showToast("Enter a valid API key.");
+    return;
+  }
+
+  ytApiKey = value;
+  localStorage.setItem(YT_KEY_STORAGE, ytApiKey);
+
+  ytApiKeyInput.value = "";
+
+  updateYtKeyUI();
+  showToast("YouTube API key saved.");
+
+});
+
+
+ytChangeKeyBtn.addEventListener("click", () => {
+
+  ytKeyBox.hidden = false;
+  ytSearchBox.hidden = true;
+  ytChangeKeyBtn.hidden = true;
+
+});
+
+
+updateYtKeyUI();
+
+
+/* ---------- search ---------- */
+
+ytSearchInput.addEventListener("input", event => {
+
+  const value = event.target.value;
+
+  clearTimeout(ytSearchTimer);
+
+  if (!value.trim()) {
+    ytResultsEl.innerHTML = "";
+    ytLastResults = [];
+    return;
+  }
+
+  ytSearchTimer = setTimeout(() => {
+    performYtSearch(value);
+  }, 450);
+
+});
+
+
+async function performYtSearch(query) {
+
+  if (!ytApiKey) {
+    showToast("Add a YouTube API key first.");
+    return;
+  }
+
+  ytResultsEl.innerHTML = ytEmptyHTML("Searching…", "One moment.");
+
+  try {
+
+    const url =
+      `${YT_API_BASE}/search?part=snippet&type=video&videoCategoryId=10` +
+      `&maxResults=15&q=${encodeURIComponent(query)}&key=${encodeURIComponent(ytApiKey)}`;
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+
+      const body = await response.json().catch(() => null);
+      const reason = body?.error?.errors?.[0]?.reason || "";
+
+      if (reason.includes("quota")) {
+        showToast("YouTube API quota exceeded for today.");
+      } else if (response.status === 400 || response.status === 403) {
+        showToast("That YouTube API key doesn't seem to work.");
+      } else {
+        showToast("YouTube search failed. Try again.");
+      }
+
+      ytResultsEl.innerHTML = ytEmptyHTML(
+        "Search failed",
+        "Check your API key and try again."
+      );
+
+      return;
+
+    }
+
+    const data = await response.json();
+
+    ytLastResults = (data.items || [])
+      .filter(item => item.id && item.id.videoId)
+      .map(item => ({
+        videoId: item.id.videoId,
+        title: item.snippet.title,
+        channel: item.snippet.channelTitle,
+        thumbnail:
+          item.snippet.thumbnails?.default?.url ||
+          item.snippet.thumbnails?.medium?.url ||
+          ""
+      }));
+
+    renderYtResults();
+
+  } catch (err) {
+
+    showToast("Couldn't reach YouTube. Check your connection.");
+
+    ytResultsEl.innerHTML = ytEmptyHTML(
+      "Search failed",
+      "Check your connection and try again."
+    );
+
+  }
+
+}
+
+
+function renderYtResults() {
+
+  if (ytLastResults.length === 0) {
+
+    ytResultsEl.innerHTML = ytEmptyHTML(
+      "No results",
+      "Try a different search."
+    );
+
+    return;
+
+  }
+
+  ytResultsEl.innerHTML = ytLastResults.map((video, index) => `
+    <div class="yt-track">
+
+      <img
+        class="yt-thumb"
+        src="${video.thumbnail}"
+        alt=""
+        loading="lazy"
+      >
+
+      <div class="yt-track-main">
+        <span class="yt-track-title">${escapeHTML(video.title)}</span>
+        <span class="yt-track-channel">${escapeHTML(video.channel)}</span>
+      </div>
+
+      <div class="yt-track-actions">
+        <button class="yt-play-btn" onclick="ytPlayResult(${index})">▶ Play</button>
+        <button onclick="ytAddToQueue(${index})">＋ Queue</button>
+      </div>
+
+    </div>
+  `).join("");
+
+}
+
+
+/* ---------- embedded playback (official IFrame Player API) ---------- */
+
+window.onYouTubeIframeAPIReady = function() {
+
+  ytPlayer = new YT.Player("ytPlayer", {
+
+    height: "100%",
+    width: "100%",
+
+    playerVars: {
+      playsinline: 1,
+      rel: 0
+    },
+
+    events: {
+
+      onReady: () => {
+
+        ytPlayerReady = true;
+
+        if (ytPendingVideoId) {
+          ytPlayer.loadVideoById(ytPendingVideoId);
+          ytPendingVideoId = null;
+        }
+
+      },
+
+      onError: () => {
+        showToast("This video can't be played right now.");
+      }
+
+    }
+
+  });
+
+};
+
+
+function playYoutubeVideo(video) {
+
+  ytPlayerWrapEl.hidden = false;
+
+  ytNowTitleEl.textContent = video.title;
+  ytNowChannelEl.textContent = video.channel;
+
+  if (ytPlayerReady && ytPlayer) {
+    ytPlayer.loadVideoById(video.videoId);
+  } else {
+    ytPendingVideoId = video.videoId;
+  }
+
+}
+
+
+window.ytPlayResult = function(index) {
+
+  const video = ytLastResults[index];
+
+  if (!video) return;
+
+  playYoutubeVideo(video);
+
+};
+
+
+/* ---------- YouTube queue (separate from the local queue) ---------- */
+
+window.ytAddToQueue = function(index) {
+
+  const video = ytLastResults[index];
+
+  if (!video) return;
+
+  ytQueue.push(video);
+
+  renderYtQueue();
+  showToast("Added to YouTube queue.");
+
+};
+
+
+window.ytPlayFromQueue = function(index) {
+
+  const video = ytQueue[index];
+
+  if (!video) return;
+
+  playYoutubeVideo(video);
+
+};
+
+
+window.ytRemoveFromQueue = function(index) {
+
+  ytQueue.splice(index, 1);
+
+  renderYtQueue();
+
+};
+
+
+function renderYtQueue() {
+
+  ytQueueTitleEl.hidden = ytQueue.length === 0;
+
+  if (ytQueue.length === 0) {
+    ytQueueListEl.innerHTML = "";
+    return;
+  }
+
+  ytQueueListEl.innerHTML = ytQueue.map((video, index) => `
+    <div class="yt-track">
+
+      <img
+        class="yt-thumb"
+        src="${video.thumbnail}"
+        alt=""
+        loading="lazy"
+      >
+
+      <div class="yt-track-main">
+        <span class="yt-track-title">${escapeHTML(video.title)}</span>
+        <span class="yt-track-channel">${escapeHTML(video.channel)}</span>
+      </div>
+
+      <div class="yt-track-actions">
+        <button class="yt-play-btn" onclick="ytPlayFromQueue(${index})">▶ Play</button>
+        <button onclick="ytRemoveFromQueue(${index})">✕ Remove</button>
+      </div>
+
+    </div>
+  `).join("");
+
+}

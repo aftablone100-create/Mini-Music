@@ -171,6 +171,90 @@
 
       </section>
 
+
+      <!-- YOUTUBE -->
+      <section id="youtube" class="page">
+
+        <div class="page-heading">
+          <p class="eyebrow">STREAM FROM YOUTUBE</p>
+          <h1>YouTube.</h1>
+        </div>
+
+        <p class="yt-disclaimer">
+          Playback uses YouTube's official embedded player. Videos stream
+          directly from YouTube — nothing is downloaded or stored.
+        </p>
+
+        <!-- Shown until an API key is saved -->
+        <div class="yt-key-box" id="ytKeyBox">
+
+          <p>
+            To search YouTube, add your own free YouTube Data API v3 key.
+            It's saved only on this device.
+          </p>
+
+          <div class="yt-key-row">
+            <input
+              id="ytApiKeyInput"
+              type="text"
+              placeholder="Paste API key…"
+              autocomplete="off"
+            >
+
+            <button id="ytSaveKeyBtn" class="primary-btn small">
+              Save
+            </button>
+          </div>
+
+          <a
+            class="yt-key-help"
+            href="https://console.cloud.google.com/apis/library/youtube.googleapis.com"
+            target="_blank"
+            rel="noopener"
+          >
+            How do I get a key? →
+          </a>
+
+        </div>
+
+        <!-- Shown once an API key is saved -->
+        <div class="search-box" id="ytSearchBox" hidden>
+          <span>⌕</span>
+          <input
+            id="ytSearchInput"
+            type="search"
+            placeholder="Search YouTube..."
+          >
+        </div>
+
+        <button class="yt-change-key-link" id="ytChangeKeyBtn" hidden>
+          Change API key
+        </button>
+
+        <!-- Inline embedded player (official YouTube IFrame Player API) -->
+        <div class="yt-player-wrap" id="ytPlayerWrap" hidden>
+
+          <div class="yt-player-frame">
+            <div id="ytPlayer"></div>
+          </div>
+
+          <div class="yt-now-playing">
+            <strong id="ytNowTitle">—</strong>
+            <small id="ytNowChannel">—</small>
+          </div>
+
+        </div>
+
+        <div id="ytResults" class="track-list"></div>
+
+        <div class="section-title" id="ytQueueTitle" hidden>
+          <h2>YouTube queue</h2>
+        </div>
+
+        <div id="ytQueueList" class="track-list"></div>
+
+      </section>
+
     </main>
 
 
@@ -225,6 +309,11 @@
       <button class="nav-btn" data-page="library">
         <span>♫</span>
         <small>Library</small>
+      </button>
+
+      <button class="nav-btn" data-page="youtube">
+        <span>▶</span>
+        <small>YouTube</small>
       </button>
     </nav>
 
@@ -317,6 +406,10 @@
   <audio id="audio" preload="metadata"></audio>
 
   <script src="app.js"></script>
+
+  <!-- Official YouTube IFrame Player API (used for playback only —
+       no downloading, extraction, or caching of media). -->
+  <script src="https://www.youtube.com/iframe_api"></script>
 
 </body>
 </html>
