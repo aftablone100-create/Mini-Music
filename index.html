@@ -185,40 +185,7 @@
           directly from YouTube — nothing is downloaded or stored.
         </p>
 
-        <!-- Shown until an API key is saved -->
-        <div class="yt-key-box" id="ytKeyBox">
-
-          <p>
-            To search YouTube, add your own free YouTube Data API v3 key.
-            It's saved only on this device.
-          </p>
-
-          <div class="yt-key-row">
-            <input
-              id="ytApiKeyInput"
-              type="text"
-              placeholder="Paste API key…"
-              autocomplete="off"
-            >
-
-            <button id="ytSaveKeyBtn" class="primary-btn small">
-              Save
-            </button>
-          </div>
-
-          <a
-            class="yt-key-help"
-            href="https://console.cloud.google.com/apis/library/youtube.googleapis.com"
-            target="_blank"
-            rel="noopener"
-          >
-            How do I get a key? →
-          </a>
-
-        </div>
-
-        <!-- Shown once an API key is saved -->
-        <div class="search-box" id="ytSearchBox" hidden>
+        <div class="search-box" id="ytSearchBox">
           <span>⌕</span>
           <input
             id="ytSearchInput"
@@ -226,10 +193,6 @@
             placeholder="Search YouTube..."
           >
         </div>
-
-        <button class="yt-change-key-link" id="ytChangeKeyBtn" hidden>
-          Change API key
-        </button>
 
         <!-- Inline embedded player (official YouTube IFrame Player API) -->
         <div class="yt-player-wrap" id="ytPlayerWrap" hidden>

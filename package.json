@@ -1,16 +1,13 @@
 {
-  "name": "mini-music",
-  "version": "1.7.0",
+  "name": "mini-music-yt-proxy",
+  "version": "1.0.0",
   "private": true,
-  "description": "Mini Music - Android-first local music player",
+  "description": "Minimal server-side proxy that keeps the YouTube Data API v3 key off the Mini Music client.",
+  "main": "server.js",
   "scripts": {
-    "build": "echo Web app ready"
+    "start": "node server.js"
   },
-  "dependencies": {
-    "@capacitor/core": "^8.4.2"
-  },
-  "devDependencies": {
-    "@capacitor/cli": "^8.4.2",
-    "@capacitor/android": "^8.4.2"
+  "engines": {
+    "node": ">=18"
   }
 }

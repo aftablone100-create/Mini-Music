@@ -1083,56 +1083,6 @@ input[type="range"] {
   margin-bottom: 20px;
 }
 
-.yt-key-box {
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--panel);
-  margin-bottom: 20px;
-}
-
-.yt-key-box p {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.yt-key-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.yt-key-row input {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--panel2);
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
-}
-
-.yt-key-help {
-  display: inline-block;
-  margin-top: 14px;
-  color: var(--purple2);
-  font-size: 12px;
-  text-decoration: none;
-}
-
-.yt-change-key-link {
-  display: block;
-  background: none;
-  color: var(--muted);
-  font-size: 12px;
-  text-decoration: underline;
-  margin: -10px 0 20px auto;
-  padding: 6px 0;
-}
-
 .yt-player-wrap {
   border-radius: 16px;
   overflow: hidden;

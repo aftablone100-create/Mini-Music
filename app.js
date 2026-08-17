@@ -1582,13 +1582,27 @@ initLibrary();
    or cached.
 ========================================================= */
 
-const YT_API_BASE = "https://www.googleapis.com/youtube/v3";
-const YT_KEY_STORAGE = "miniMusicYtApiKey";
+/* =========================================================
+   YOUTUBE — STEP 1: SEARCH + OFFICIAL EMBEDDED PLAYBACK
+   -----------------------------------------------------------
+   This block is intentionally self-contained. It does not read
+   or write any of the local-playback variables above (songs,
+   currentIndex, playOrder, orderPos, shuffle, repeatMode, etc.)
+   and does not touch the local mini-player / full-player / queue
+   sheet. YouTube videos are streamed only through the official
+   YouTube IFrame Player API — nothing is downloaded, extracted,
+   or cached.
 
-const ytKeyBox = document.getElementById("ytKeyBox");
-const ytApiKeyInput = document.getElementById("ytApiKeyInput");
-const ytSaveKeyBtn = document.getElementById("ytSaveKeyBtn");
-const ytChangeKeyBtn = document.getElementById("ytChangeKeyBtn");
+   Search requests go through a server-side proxy (see /server) so
+   the YouTube Data API v3 key stays off the client entirely. The
+   user never enters, sees, or stores an API key anywhere in this
+   app.
+========================================================= */
+
+// EDIT ME: point this at wherever you deploy the proxy in /server.
+// e.g. "https://mini-music-proxy.onrender.com"
+const YT_PROXY_BASE = "https://your-proxy-url.example.com";
+
 const ytSearchBox = document.getElementById("ytSearchBox");
 const ytSearchInput = document.getElementById("ytSearchInput");
 const ytResultsEl = document.getElementById("ytResults");
@@ -1598,7 +1612,6 @@ const ytPlayerWrapEl = document.getElementById("ytPlayerWrap");
 const ytNowTitleEl = document.getElementById("ytNowTitle");
 const ytNowChannelEl = document.getElementById("ytNowChannel");
 
-let ytApiKey = localStorage.getItem(YT_KEY_STORAGE) || "";
 let ytLastResults = [];
 let ytQueue = [];
 let ytSearchTimer = null;
@@ -1619,51 +1632,6 @@ function ytEmptyHTML(title, text) {
   `;
 
 }
-
-
-/* ---------- API key ---------- */
-
-function updateYtKeyUI() {
-
-  const hasKey = Boolean(ytApiKey);
-
-  ytKeyBox.hidden = hasKey;
-  ytSearchBox.hidden = !hasKey;
-  ytChangeKeyBtn.hidden = !hasKey;
-
-}
-
-
-ytSaveKeyBtn.addEventListener("click", () => {
-
-  const value = ytApiKeyInput.value.trim();
-
-  if (!value) {
-    showToast("Enter a valid API key.");
-    return;
-  }
-
-  ytApiKey = value;
-  localStorage.setItem(YT_KEY_STORAGE, ytApiKey);
-
-  ytApiKeyInput.value = "";
-
-  updateYtKeyUI();
-  showToast("YouTube API key saved.");
-
-});
-
-
-ytChangeKeyBtn.addEventListener("click", () => {
-
-  ytKeyBox.hidden = false;
-  ytSearchBox.hidden = true;
-  ytChangeKeyBtn.hidden = true;
-
-});
-
-
-updateYtKeyUI();
 
 
 /* ---------- search ---------- */
@@ -1689,9 +1657,17 @@ ytSearchInput.addEventListener("input", event => {
 
 async function performYtSearch(query) {
 
-  if (!ytApiKey) {
-    showToast("Add a YouTube API key first.");
+  if (!YT_PROXY_BASE || YT_PROXY_BASE.includes("your-proxy-url")) {
+
+    showToast("YouTube search isn't set up yet — see server/README.md.");
+
+    ytResultsEl.innerHTML = ytEmptyHTML(
+      "Search not configured",
+      "The app's search backend hasn't been set up yet."
+    );
+
     return;
+
   }
 
   ytResultsEl.innerHTML = ytEmptyHTML("Searching…", "One moment.");
@@ -1699,52 +1675,41 @@ async function performYtSearch(query) {
   try {
 
     const url =
-      `${YT_API_BASE}/search?part=snippet&type=video&videoCategoryId=10` +
-      `&maxResults=15&q=${encodeURIComponent(query)}&key=${encodeURIComponent(ytApiKey)}`;
+      `${YT_PROXY_BASE}/api/youtube/search` +
+      `?q=${encodeURIComponent(query)}&maxResults=15`;
 
     const response = await fetch(url);
 
-    if (!response.ok) {
+    const data = await response.json().catch(() => null);
 
-      const body = await response.json().catch(() => null);
-      const reason = body?.error?.errors?.[0]?.reason || "";
+    if (!response.ok || !data) {
+
+      const reason = data?.reason || "";
 
       if (reason.includes("quota")) {
-        showToast("YouTube API quota exceeded for today.");
-      } else if (response.status === 400 || response.status === 403) {
-        showToast("That YouTube API key doesn't seem to work.");
+        showToast("YouTube search is temporarily unavailable (quota).");
+      } else if (response.status === 429) {
+        showToast("Too many searches — try again in a moment.");
       } else {
         showToast("YouTube search failed. Try again.");
       }
 
       ytResultsEl.innerHTML = ytEmptyHTML(
         "Search failed",
-        "Check your API key and try again."
+        "Please try again in a moment."
       );
 
       return;
 
     }
 
-    const data = await response.json();
-
-    ytLastResults = (data.items || [])
-      .filter(item => item.id && item.id.videoId)
-      .map(item => ({
-        videoId: item.id.videoId,
-        title: item.snippet.title,
-        channel: item.snippet.channelTitle,
-        thumbnail:
-          item.snippet.thumbnails?.default?.url ||
-          item.snippet.thumbnails?.medium?.url ||
-          ""
-      }));
+    ytLastResults = data.items || [];
 
     renderYtResults();
 
   } catch (err) {
 
-    showToast("Couldn't reach YouTube. Check your connection.");
+    showToast("Couldn't reach the search backend. Check your connection.");
 
     ytResultsEl.innerHTML = ytEmptyHTML(
       "Search failed",
