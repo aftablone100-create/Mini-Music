@@ -153,6 +153,152 @@ async function handleSearch(res, query) {
 }
 
 
+/* ---------- YouTube playlist import (server-side key) ---------- */
+
+// Accepts a full playlist URL (youtube.com/playlist?list=..., a watch
+// URL with &list=..., a youtu.be link with ?list=...) or a bare
+// playlist ID, and returns just the ID.
+function extractPlaylistId(input) {
+
+  const raw = (input || "").trim();
+
+  if (!raw) return null;
+
+  // Bare ID — YouTube playlist IDs are alphanumeric plus - and _.
+  if (/^[A-Za-z0-9_-]{10,64}$/.test(raw) && !raw.includes("://")) {
+    return raw;
+  }
+
+  try {
+
+    const parsed = new URL(raw);
+    const listParam = parsed.searchParams.get("list");
+
+    if (listParam) return listParam;
+
+  } catch (e) {
+    // Not a valid URL and not a bare ID — fall through to null.
+  }
+
+  return null;
+
+}
+
+
+const MAX_PLAYLIST_ITEMS = 200; // cap pages fetched to bound quota use
+
+async function handlePlaylist(res, query) {
+
+  const playlistId = extractPlaylistId(query.get("url") || query.get("id") || "");
+
+  if (!playlistId) {
+    sendJSON(res, 400, { error: "Couldn't find a playlist in that link." });
+    return;
+  }
+
+  try {
+
+    // Playlist title/metadata.
+    const metaUrl =
+      "https://www.googleapis.com/youtube/v3/playlists" +
+      "?part=snippet" +
+      `&id=${encodeURIComponent(playlistId)}` +
+      `&key=${encodeURIComponent(YOUTUBE_API_KEY)}`;
+
+    const metaRes = await fetch(metaUrl);
+    const metaData = await metaRes.json();
+
+    if (!metaRes.ok) {
+
+      const reason = metaData?.error?.errors?.[0]?.reason || "";
+
+      sendJSON(res, metaRes.status, {
+        error: "Couldn't load that playlist.",
+        reason
+      });
+
+      return;
+
+    }
+
+    const playlistInfo = metaData.items && metaData.items[0];
+
+    if (!playlistInfo) {
+      sendJSON(res, 404, { error: "Playlist not found or is private." });
+      return;
+    }
+
+    // Playlist items, paginated.
+    const items = [];
+    let pageToken = "";
+
+    do {
+
+      const itemsUrl =
+        "https://www.googleapis.com/youtube/v3/playlistItems" +
+        "?part=snippet" +
+        `&playlistId=${encodeURIComponent(playlistId)}` +
+        "&maxResults=50" +
+        (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "") +
+        `&key=${encodeURIComponent(YOUTUBE_API_KEY)}`;
+
+      const itemsRes = await fetch(itemsUrl);
+      const itemsData = await itemsRes.json();
+
+      if (!itemsRes.ok) {
+
+        const reason = itemsData?.error?.errors?.[0]?.reason || "";
+
+        sendJSON(res, itemsRes.status, {
+          error: "Couldn't load that playlist's videos.",
+          reason
+        });
+
+        return;
+
+      }
+
+      for (const item of (itemsData.items || [])) {
+
+        const videoId = item.snippet?.resourceId?.videoId;
+        const title = item.snippet?.title;
+
+        // Skip private/deleted placeholder entries.
+        if (!videoId || !title || title === "Private video" || title === "Deleted video") {
+          continue;
+        }
+
+        items.push({
+          videoId,
+          title,
+          channel: item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle || "",
+          thumbnail:
+            item.snippet.thumbnails?.default?.url ||
+            item.snippet.thumbnails?.medium?.url ||
+            ""
+        });
+
+      }
+
+      pageToken = itemsData.nextPageToken || "";
+
+    } while (pageToken && items.length < MAX_PLAYLIST_ITEMS);
+
+    sendJSON(res, 200, {
+      id: playlistId,
+      title: playlistInfo.snippet?.title || "Imported playlist",
+      items
+    });
+
+  } catch (err) {
+
+    sendJSON(res, 502, { error: "Couldn't reach YouTube." });
+
+  }
+
+}
+
+
 /* ---------- server ---------- */
 
 const server = http.createServer((req, res) => {
@@ -186,6 +332,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (url.pathname === "/api/youtube/playlist") {
+    handlePlaylist(res, url.searchParams);
+    return;
+  }
+
   sendJSON(res, 404, { error: "Not found." });
 
 });
@@ -193,4 +344,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`Mini Music YouTube proxy running on port ${PORT}`);
 });
+
 
