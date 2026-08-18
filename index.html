@@ -194,19 +194,39 @@
           >
         </div>
 
-        <!-- Inline embedded player (official YouTube IFrame Player API) -->
+        <!-- Inline embedded player (official YouTube IFrame Player API).
+             This is the actual playback surface — the mini/full player
+             mirror its state but this is what's really streaming the
+             video, per YouTube's terms. -->
         <div class="yt-player-wrap" id="ytPlayerWrap" hidden>
-
           <div class="yt-player-frame">
             <div id="ytPlayer"></div>
           </div>
-
-          <div class="yt-now-playing">
-            <strong id="ytNowTitle">—</strong>
-            <small id="ytNowChannel">—</small>
-          </div>
-
         </div>
+
+        <div class="section-title">
+          <h2>Import a playlist</h2>
+        </div>
+
+        <div class="search-box" id="ytImportBox">
+          <span>🔗</span>
+          <input
+            id="ytPlaylistInput"
+            type="url"
+            placeholder="Paste a YouTube playlist link..."
+          >
+        </div>
+
+        <button class="primary-btn small yt-import-btn" id="ytImportBtn">
+          <span class="btn-label">＋ Import playlist</span>
+          <span class="btn-spinner" hidden></span>
+        </button>
+
+        <div class="section-title" id="ytPlaylistsTitle" hidden>
+          <h2>Your playlists</h2>
+        </div>
+
+        <div id="ytPlaylists" class="track-list"></div>
 
         <div id="ytResults" class="track-list"></div>
 
@@ -231,6 +251,7 @@
       <div class="mini-player-row">
 
         <div class="mini-art" id="miniArt">
+          <img class="mini-art-img" id="miniArtImg" alt="" hidden>
           <span class="mini-art-icon">♫</span>
           <span class="mini-spinner" id="miniSpinner" hidden></span>
         </div>
@@ -300,6 +321,7 @@
 
       <div class="full-art-wrap">
         <div class="full-art" id="fullArt">
+          <img class="full-art-img" id="fullArtImg" alt="" hidden>
           <span class="full-art-icon">♫</span>
           <span class="full-spinner" id="fullSpinner" hidden></span>
         </div>

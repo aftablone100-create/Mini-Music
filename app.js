@@ -28,6 +28,10 @@ const volumeInput = document.getElementById("volume");
 let songs = [];
 let currentIndex = -1;
 
+// Which engine the shared mini-player / full-player currently reflects.
+// "local" = the <audio> element, "youtube" = the YouTube IFrame player.
+let activeSource = "local";
+
 // Store liked songs by a unique ID instead of just the filename
 let liked = JSON.parse(localStorage.getItem("miniMusicLiked") || "[]");
 
@@ -52,8 +56,9 @@ audio.volume = Number(volumeInput.value) || 0.8;
 ========================= */
 
 const DB_NAME = "miniMusicDB";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = "songs";
+const YT_PLAYLIST_STORE_NAME = "ytPlaylists";
 
 let dbPromise = null;
 
@@ -77,6 +82,10 @@ function openDB() {
 
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains(YT_PLAYLIST_STORE_NAME)) {
+        db.createObjectStore(YT_PLAYLIST_STORE_NAME, { keyPath: "id" });
       }
 
     };
@@ -122,6 +131,59 @@ async function dbGetAllSongs() {
 
     request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
+
+  });
+
+}
+
+
+/* ---------- YouTube playlists (separate store) ---------- */
+
+async function dbAddPlaylist(playlist) {
+
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+
+    const tx = db.transaction(YT_PLAYLIST_STORE_NAME, "readwrite");
+
+    tx.objectStore(YT_PLAYLIST_STORE_NAME).put(playlist);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+
+  });
+
+}
+
+async function dbGetAllPlaylists() {
+
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+
+    const tx = db.transaction(YT_PLAYLIST_STORE_NAME, "readonly");
+    const request = tx.objectStore(YT_PLAYLIST_STORE_NAME).getAll();
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+
+  });
+
+}
+
+async function dbDeletePlaylist(id) {
+
+  const db = await openDB();
+
+  return new Promise((resolve, reject) => {
+
+    const tx = db.transaction(YT_PLAYLIST_STORE_NAME, "readwrite");
+
+    tx.objectStore(YT_PLAYLIST_STORE_NAME).delete(id);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
 
   });
 
@@ -392,6 +454,12 @@ function loadSong(index, autoplay = true) {
 
   if (!songs[index]) return;
 
+  // Hand control of the shared mini/full player back to local audio.
+  if (activeSource === "youtube") {
+    ytPauseForHandoff();
+  }
+  setActiveSource("local");
+
   currentIndex = index;
 
   const song = songs[index];
@@ -449,6 +517,11 @@ function loadSong(index, autoplay = true) {
 
 
 function togglePlayPause() {
+
+  if (activeSource === "youtube") {
+    ytTogglePlayPause();
+    return;
+  }
 
   if (currentIndex === -1) {
 
@@ -597,13 +670,62 @@ function buildPlayOrder() {
 }
 
 
+/* Shared shuffle/repeat/like UI reflects whichever engine (local
+   audio or YouTube) is currently active. */
+
+function updateShuffleBtn() {
+
+  const active = activeSource === "youtube" ? ytShuffle : shuffle;
+  shuffleBtn.classList.toggle("active", active);
+
+}
+
+
+function updateRepeatBtn() {
+
+  const mode = activeSource === "youtube" ? ytRepeatMode : repeatMode;
+
+  repeatBtn.classList.toggle("active", mode !== "off");
+  repeatBtn.textContent = mode === "one" ? "🔂" : "🔁";
+
+}
+
+
+function setActiveSource(source) {
+
+  activeSource = source;
+
+  const likeBtn = document.getElementById("likeBtn");
+
+  // The like system only applies to the local library.
+  likeBtn.style.display = source === "youtube" ? "none" : "";
+
+  updateShuffleBtn();
+  updateRepeatBtn();
+
+}
+
+
 shuffleBtn.addEventListener("click", () => {
+
+  if (activeSource === "youtube") {
+
+    ytShuffle = !ytShuffle;
+
+    localStorage.setItem("miniMusicYtShuffle", JSON.stringify(ytShuffle));
+
+    updateShuffleBtn();
+    ytBuildPlayOrder();
+
+    return;
+
+  }
 
   shuffle = !shuffle;
 
   localStorage.setItem("miniMusicShuffle", JSON.stringify(shuffle));
 
-  shuffleBtn.classList.toggle("active", shuffle);
+  updateShuffleBtn();
 
   buildPlayOrder();
   savePlaybackState();
@@ -611,15 +733,20 @@ shuffleBtn.addEventListener("click", () => {
 });
 
 
-function updateRepeatBtn() {
-
-  repeatBtn.classList.toggle("active", repeatMode !== "off");
-  repeatBtn.textContent = repeatMode === "one" ? "🔂" : "🔁";
-
-}
-
-
 repeatBtn.addEventListener("click", () => {
+
+  if (activeSource === "youtube") {
+
+    const idx = REPEAT_STATES.indexOf(ytRepeatMode);
+    ytRepeatMode = REPEAT_STATES[(idx + 1) % REPEAT_STATES.length];
+
+    localStorage.setItem("miniMusicYtRepeat", ytRepeatMode);
+
+    updateRepeatBtn();
+
+    return;
+
+  }
 
   const idx = REPEAT_STATES.indexOf(repeatMode);
   repeatMode = REPEAT_STATES[(idx + 1) % REPEAT_STATES.length];
@@ -637,6 +764,11 @@ repeatBtn.addEventListener("click", () => {
 ========================= */
 
 function playNext(auto = false) {
+
+  if (activeSource === "youtube") {
+    ytPlayNext(auto);
+    return;
+  }
 
   if (songs.length === 0) return;
 
@@ -669,6 +801,11 @@ function playNext(auto = false) {
 
 
 function playPrev() {
+
+  if (activeSource === "youtube") {
+    ytPlayPrev();
+    return;
+  }
 
   if (songs.length === 0) return;
 
@@ -741,6 +878,11 @@ audio.addEventListener("timeupdate", () => {
 
 
 progress.addEventListener("input", () => {
+
+  if (activeSource === "youtube") {
+    ytSeekToPercent(progress.value);
+    return;
+  }
 
   if (!audio.duration) return;
 
@@ -840,6 +982,8 @@ document.getElementById("likeBtn").addEventListener(
   "click",
   () => {
 
+    if (activeSource === "youtube") return;
+
     if (currentIndex === -1) return;
 
     toggleLike(currentIndex);
@@ -893,6 +1037,11 @@ closeQueueBtn.addEventListener("click", () => {
 
 
 function renderQueue() {
+
+  if (activeSource === "youtube") {
+    renderYtQueueSheet();
+    return;
+  }
 
   if (songs.length === 0 || orderPos === -1) {
 
@@ -1343,6 +1492,11 @@ if ("mediaSession" in navigator) {
 
   navigator.mediaSession.setActionHandler("play", () => {
 
+    if (activeSource === "youtube") {
+      ytPlayer && ytPlayerReady && ytPlayer.playVideo && ytPlayer.playVideo();
+      return;
+    }
+
     if (currentIndex === -1) {
 
       if (songs.length === 0) return;
@@ -1359,7 +1513,14 @@ if ("mediaSession" in navigator) {
   });
 
   navigator.mediaSession.setActionHandler("pause", () => {
+
+    if (activeSource === "youtube") {
+      ytPlayer && ytPlayerReady && ytPlayer.pauseVideo && ytPlayer.pauseVideo();
+      return;
+    }
+
     audio.pause();
+
   });
 
   navigator.mediaSession.setActionHandler("previoustrack", playPrev);
@@ -1368,15 +1529,29 @@ if ("mediaSession" in navigator) {
 
   navigator.mediaSession.setActionHandler("seekto", details => {
 
-    if (details.seekTime !== undefined && audio.duration) {
+    if (details.seekTime === undefined) return;
+
+    if (activeSource === "youtube") {
+      ytSeekToSeconds(details.seekTime);
+      return;
+    }
+
+    if (audio.duration) {
       audio.currentTime = details.seekTime;
     }
 
   });
 
   navigator.mediaSession.setActionHandler("stop", () => {
+
+    if (activeSource === "youtube") {
+      ytPlayer && ytPlayerReady && ytPlayer.pauseVideo && ytPlayer.pauseVideo();
+      return;
+    }
+
     audio.pause();
     audio.currentTime = 0;
+
   });
 
 }
@@ -1569,34 +1744,21 @@ async function initLibrary() {
 
 initLibrary();
 
-
 /* =========================================================
-   YOUTUBE — STEP 1: SEARCH + OFFICIAL EMBEDDED PLAYBACK
+   YOUTUBE — SEARCH, PLAYLIST IMPORT, AND FULL PLAYER INTEGRATION
    -----------------------------------------------------------
-   This block is intentionally self-contained. It does not read
-   or write any of the local-playback variables above (songs,
-   currentIndex, playOrder, orderPos, shuffle, repeatMode, etc.)
-   and does not touch the local mini-player / full-player / queue
-   sheet. YouTube videos are streamed only through the official
-   YouTube IFrame Player API — nothing is downloaded, extracted,
-   or cached.
-========================================================= */
+   YouTube videos are streamed only through the official YouTube
+   IFrame Player API (in the #ytPlayer element on the YouTube tab) —
+   nothing is downloaded, extracted, or cached. This block drives
+   that player and mirrors its state onto the SAME mini-player /
+   full-player / queue-sheet UI used for local playback, switching
+   the shared UI's "activeSource" between "local" and "youtube" as
+   the person moves between the two.
 
-/* =========================================================
-   YOUTUBE — STEP 1: SEARCH + OFFICIAL EMBEDDED PLAYBACK
-   -----------------------------------------------------------
-   This block is intentionally self-contained. It does not read
-   or write any of the local-playback variables above (songs,
-   currentIndex, playOrder, orderPos, shuffle, repeatMode, etc.)
-   and does not touch the local mini-player / full-player / queue
-   sheet. YouTube videos are streamed only through the official
-   YouTube IFrame Player API — nothing is downloaded, extracted,
-   or cached.
-
-   Search requests go through a server-side proxy (see /server) so
-   the YouTube Data API v3 key stays off the client entirely. The
-   user never enters, sees, or stores an API key anywhere in this
-   app.
+   Search and playlist-import requests go through a server-side
+   proxy (see /server) so the YouTube Data API v3 key stays off the
+   client entirely. The user never enters, sees, or stores an API
+   key anywhere in this app, and no YouTube login is ever required.
 ========================================================= */
 
 // EDIT ME: point this at wherever you deploy the proxy in /server.
@@ -1609,16 +1771,44 @@ const ytResultsEl = document.getElementById("ytResults");
 const ytQueueTitleEl = document.getElementById("ytQueueTitle");
 const ytQueueListEl = document.getElementById("ytQueueList");
 const ytPlayerWrapEl = document.getElementById("ytPlayerWrap");
-const ytNowTitleEl = document.getElementById("ytNowTitle");
-const ytNowChannelEl = document.getElementById("ytNowChannel");
 
-let ytLastResults = [];
-let ytQueue = [];
+const ytPlaylistInput = document.getElementById("ytPlaylistInput");
+const ytImportBtn = document.getElementById("ytImportBtn");
+const ytPlaylistsTitleEl = document.getElementById("ytPlaylistsTitle");
+const ytPlaylistsEl = document.getElementById("ytPlaylists");
+
+const miniArtImg = document.getElementById("miniArtImg");
+const fullArtImg = document.getElementById("fullArtImg");
+
+let ytLastResults = [];   // most recent search results
+let ytQueue = [];         // manually queued videos (separate from playOrder)
 let ytSearchTimer = null;
+
+let ytPlaylists = [];             // imported playlists, from IndexedDB
+let ytExpandedPlaylistId = null;  // which playlist's track list is expanded
 
 let ytPlayer = null;
 let ytPlayerReady = false;
 let ytPendingVideoId = null;
+
+// Shuffle / repeat state for YouTube playback (mirrors the local
+// shuffle/repeatMode variables but kept separate since they apply to
+// a different play context).
+let ytShuffle = JSON.parse(localStorage.getItem("miniMusicYtShuffle") || "false");
+let ytRepeatMode = localStorage.getItem("miniMusicYtRepeat") || "off";
+
+// The list of videos currently providing prev/next context (a copy
+// of whichever list was playing from: search results, the manual
+// queue, or an imported playlist's tracks), plus a shuffled play
+// order over it — same pattern as the local playOrder/orderPos.
+let ytContext = [];
+let ytContextLabel = null; // { type: "playlist", id } | null — where ytContext came from
+let ytPlayOrder = [];
+let ytOrderPos = -1;
+
+let ytProgressTimer = null;
+let ytDuration = 0;
+let ytIsPlaying = false;
 
 
 function ytEmptyHTML(title, text) {
@@ -1655,9 +1845,14 @@ ytSearchInput.addEventListener("input", event => {
 });
 
 
+function ytProxyConfigured() {
+  return YT_PROXY_BASE && !YT_PROXY_BASE.includes("your-proxy-url");
+}
+
+
 async function performYtSearch(query) {
 
-  if (!YT_PROXY_BASE || YT_PROXY_BASE.includes("your-proxy-url")) {
+  if (!ytProxyConfigured()) {
 
     showToast("YouTube search isn't set up yet — see server/README.md.");
 
@@ -1787,6 +1982,8 @@ window.onYouTubeIframeAPIReady = function() {
 
       },
 
+      onStateChange: onYtPlayerStateChange,
+
       onError: () => {
         showToast("This video can't be played right now.");
       }
@@ -1798,17 +1995,261 @@ window.onYouTubeIframeAPIReady = function() {
 };
 
 
-function playYoutubeVideo(video) {
+function onYtPlayerStateChange(event) {
+
+  if (event.data === YT.PlayerState.PLAYING) {
+    ytOnPlay();
+  } else if (event.data === YT.PlayerState.PAUSED) {
+    ytOnPause();
+  } else if (event.data === YT.PlayerState.ENDED) {
+    ytOnEnded();
+  } else if (event.data === YT.PlayerState.BUFFERING) {
+    document.getElementById("miniSpinner").hidden = false;
+    document.getElementById("fullSpinner").hidden = false;
+  }
+
+}
+
+
+/* Load a video and make it the thing the shared mini/full player
+   shows and controls. `context`/`contextIndex` describe the list
+   this video came from (search results, manual queue, or a
+   playlist), so prev/next can walk through it. */
+function playYoutubeVideo(video, context, contextIndex, contextLabel = null) {
+
+  // Hand control of the shared mini/full player over from local audio.
+  if (!audio.paused) {
+    audio.pause();
+  }
+
+  setActiveSource("youtube");
+
+  ytContext = context.slice();
+  ytContextLabel = contextLabel;
+  ytBuildPlayOrder(video);
+
+  const pos = ytPlayOrder.findIndex(i => ytContext[i] && ytContext[i].videoId === video.videoId);
+  ytOrderPos = pos > -1 ? pos : 0;
 
   ytPlayerWrapEl.hidden = false;
 
-  ytNowTitleEl.textContent = video.title;
-  ytNowChannelEl.textContent = video.channel;
+  updateYtNowPlayingUI(video);
 
   if (ytPlayerReady && ytPlayer) {
     ytPlayer.loadVideoById(video.videoId);
   } else {
     ytPendingVideoId = video.videoId;
+  }
+
+  renderYtQueueSheet();
+
+}
+
+
+function updateYtNowPlayingUI(video) {
+
+  document.getElementById("playerTitle").textContent = video.title;
+  document.getElementById("playerArtist").textContent = video.channel;
+
+  document.getElementById("fullPlayerTitle").textContent = video.title;
+  document.getElementById("fullPlayerArtist").textContent = video.channel;
+
+  document.getElementById("homeNowPlaying").textContent = video.title;
+  document.getElementById("homeArtist").textContent = video.channel;
+
+  if (video.thumbnail) {
+    miniArtImg.src = video.thumbnail;
+    miniArtImg.hidden = false;
+    fullArtImg.src = video.thumbnail;
+    fullArtImg.hidden = false;
+  }
+
+  ytUpdateMediaSession(video);
+
+  // Reset progress display until the player reports real numbers.
+  document.getElementById("progress").value = 0;
+  miniProgressFill.style.width = "0%";
+  document.getElementById("currentTime").textContent = "0:00";
+  document.getElementById("duration").textContent = "0:00";
+  ytDuration = 0;
+
+}
+
+
+function ytHideThumbnailArt() {
+  miniArtImg.hidden = true;
+  fullArtImg.hidden = true;
+}
+
+
+function ytUpdateMediaSession(video) {
+
+  if (!("mediaSession" in navigator)) return;
+
+  try {
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: video.title,
+      artist: video.channel,
+      album: "Mini Music — YouTube",
+      artwork: video.thumbnail
+        ? [{ src: video.thumbnail, sizes: "120x90", type: "image/jpeg" }]
+        : []
+    });
+
+  } catch (e) {
+    // Ignore if MediaMetadata isn't available.
+  }
+
+}
+
+
+function ytOnPlay() {
+
+  ytIsPlaying = true;
+
+  document.getElementById("playBtn").textContent = "❚❚";
+  miniPlayBtn.textContent = "❚❚";
+
+  miniArt.classList.add("spinning");
+  fullArt.classList.add("spinning");
+
+  document.getElementById("miniSpinner").hidden = true;
+  document.getElementById("fullSpinner").hidden = true;
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "playing";
+  }
+
+  ytStartProgressPolling();
+
+}
+
+
+function ytOnPause() {
+
+  ytIsPlaying = false;
+
+  document.getElementById("playBtn").textContent = "▶";
+  miniPlayBtn.textContent = "▶";
+
+  miniArt.classList.remove("spinning");
+  fullArt.classList.remove("spinning");
+
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.playbackState = "paused";
+  }
+
+  ytStopProgressPolling();
+
+}
+
+
+function ytOnEnded() {
+
+  if (ytRepeatMode === "one") {
+    ytPlayer.seekTo(0, true);
+    ytPlayer.playVideo();
+    return;
+  }
+
+  ytPlayNext(true);
+
+}
+
+
+function ytPauseForHandoff() {
+
+  if (ytPlayer && ytPlayerReady && typeof ytPlayer.pauseVideo === "function") {
+    ytPlayer.pauseVideo();
+  }
+
+  ytStopProgressPolling();
+  ytHideThumbnailArt();
+
+}
+
+
+function ytTogglePlayPause() {
+
+  if (!ytPlayer || !ytPlayerReady) return;
+
+  if (ytIsPlaying) {
+    ytPlayer.pauseVideo();
+  } else {
+    ytPlayer.playVideo();
+  }
+
+}
+
+
+function ytSeekToPercent(percent) {
+
+  if (!ytPlayer || !ytPlayerReady || !ytDuration) return;
+
+  ytPlayer.seekTo((percent / 100) * ytDuration, true);
+
+}
+
+
+function ytSeekToSeconds(seconds) {
+
+  if (!ytPlayer || !ytPlayerReady) return;
+
+  ytPlayer.seekTo(seconds, true);
+
+}
+
+
+function ytStartProgressPolling() {
+
+  ytStopProgressPolling();
+
+  ytProgressTimer = setInterval(() => {
+
+    if (!ytPlayer || typeof ytPlayer.getCurrentTime !== "function") return;
+
+    const current = ytPlayer.getCurrentTime() || 0;
+    const duration = ytPlayer.getDuration() || 0;
+
+    if (!duration) return;
+
+    ytDuration = duration;
+
+    const percent = (current / duration) * 100;
+
+    document.getElementById("progress").value = percent;
+    miniProgressFill.style.width = percent + "%";
+
+    document.getElementById("currentTime").textContent = formatTime(current);
+    document.getElementById("duration").textContent = formatTime(duration);
+
+    if ("mediaSession" in navigator) {
+
+      try {
+
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: 1,
+          position: Math.min(current, duration)
+        });
+
+      } catch (e) {
+        // Some browsers throw if called too early; safe to ignore.
+      }
+
+    }
+
+  }, 500);
+
+}
+
+
+function ytStopProgressPolling() {
+
+  if (ytProgressTimer) {
+    clearInterval(ytProgressTimer);
+    ytProgressTimer = null;
   }
 
 }
@@ -1820,12 +2261,125 @@ window.ytPlayResult = function(index) {
 
   if (!video) return;
 
-  playYoutubeVideo(video);
+  playYoutubeVideo(video, ytLastResults, index);
 
 };
 
 
-/* ---------- YouTube queue (separate from the local queue) ---------- */
+/* ---------- YouTube shuffle / repeat / next / prev ---------- */
+
+function ytBuildPlayOrder(currentVideo = null) {
+
+  ytPlayOrder = ytContext.map((_, i) => i);
+
+  if (ytShuffle) {
+
+    for (let i = ytPlayOrder.length - 1; i > 0; i--) {
+
+      const j = Math.floor(Math.random() * (i + 1));
+
+      [ytPlayOrder[i], ytPlayOrder[j]] = [ytPlayOrder[j], ytPlayOrder[i]];
+
+    }
+
+    if (currentVideo) {
+
+      const curIdx = ytContext.findIndex(v => v.videoId === currentVideo.videoId);
+      const pos = ytPlayOrder.indexOf(curIdx);
+
+      if (pos > -1) {
+        ytPlayOrder.splice(pos, 1);
+        ytPlayOrder.unshift(curIdx);
+      }
+
+    }
+
+  }
+
+  if (currentVideo) {
+
+    const curIdx = ytContext.findIndex(v => v.videoId === currentVideo.videoId);
+    ytOrderPos = ytPlayOrder.indexOf(curIdx);
+
+  }
+
+  renderYtQueueSheet();
+
+}
+
+
+function ytPlayNext(auto = false) {
+
+  if (ytContext.length === 0) return;
+
+  if (auto && ytRepeatMode === "one") {
+    ytPlayer.seekTo(0, true);
+    ytPlayer.playVideo();
+    return;
+  }
+
+  if (ytOrderPos === -1) ytBuildPlayOrder();
+
+  let nextPos = ytOrderPos + 1;
+
+  if (nextPos >= ytPlayOrder.length) {
+
+    if (auto && ytRepeatMode === "off") {
+      ytPlayer && ytPlayer.pauseVideo && ytPlayer.pauseVideo();
+      return;
+    }
+
+    nextPos = 0;
+
+  }
+
+  ytOrderPos = nextPos;
+
+  const video = ytContext[ytPlayOrder[ytOrderPos]];
+
+  if (!video) return;
+
+  updateYtNowPlayingUI(video);
+
+  if (ytPlayerReady && ytPlayer) {
+    ytPlayer.loadVideoById(video.videoId);
+  }
+
+  renderYtQueueSheet();
+
+}
+
+
+function ytPlayPrev() {
+
+  if (ytContext.length === 0) return;
+
+  if (ytOrderPos === -1) ytBuildPlayOrder();
+
+  let prevPos = ytOrderPos - 1;
+
+  if (prevPos < 0) {
+    prevPos = ytPlayOrder.length - 1;
+  }
+
+  ytOrderPos = prevPos;
+
+  const video = ytContext[ytPlayOrder[ytOrderPos]];
+
+  if (!video) return;
+
+  updateYtNowPlayingUI(video);
+
+  if (ytPlayerReady && ytPlayer) {
+    ytPlayer.loadVideoById(video.videoId);
+  }
+
+  renderYtQueueSheet();
+
+}
+
+
+/* ---------- YouTube manual queue (separate from search results) ---------- */
 
 window.ytAddToQueue = function(index) {
 
@@ -1847,7 +2401,7 @@ window.ytPlayFromQueue = function(index) {
 
   if (!video) return;
 
-  playYoutubeVideo(video);
+  playYoutubeVideo(video, ytQueue, index);
 
 };
 
@@ -1894,3 +2448,379 @@ function renderYtQueue() {
   `).join("");
 
 }
+
+
+/* Renders the "Up next" sheet (the same sheet the local queue uses)
+   with whatever list is currently providing YouTube prev/next
+   context. */
+function renderYtQueueSheet() {
+
+  if (ytContext.length === 0 || ytOrderPos === -1) {
+
+    queueList.innerHTML = `
+      <div class="empty">
+        <div>▶</div>
+        <h3>Queue is empty</h3>
+        <p>Play a YouTube video to build your queue.</p>
+      </div>
+    `;
+
+    return;
+
+  }
+
+  const upcoming = [];
+
+  for (let i = 1; i < ytPlayOrder.length; i++) {
+
+    const pos = (ytOrderPos + i) % ytPlayOrder.length;
+
+    if (pos === ytOrderPos) break;
+
+    upcoming.push({ pos, videoIndex: ytPlayOrder[pos] });
+
+  }
+
+  if (upcoming.length === 0) {
+
+    queueList.innerHTML = `
+      <div class="empty">
+        <div>▶</div>
+        <h3>End of queue</h3>
+        <p>${ytRepeatMode !== "off" ? "Playback will repeat." : "Turn on repeat to keep the music going."}</p>
+      </div>
+    `;
+
+    return;
+
+  }
+
+  queueList.innerHTML = upcoming.map((item, i) => {
+
+    const video = ytContext[item.videoIndex];
+
+    if (!video) return "";
+
+    return `
+      <div class="queue-item">
+
+        <span class="queue-num">${i + 1}</span>
+
+        <div class="queue-info">
+          <strong>${escapeHTML(video.title)}</strong>
+          <small>${escapeHTML(video.channel)}</small>
+        </div>
+
+        <button class="queue-play" onclick="ytJumpToQueue(${item.pos})" aria-label="Play now">▶</button>
+
+        <span></span>
+
+      </div>
+    `;
+
+  }).join("");
+
+}
+
+
+window.ytJumpToQueue = function(pos) {
+
+  ytOrderPos = pos;
+
+  const video = ytContext[ytPlayOrder[ytOrderPos]];
+
+  if (!video) return;
+
+  updateYtNowPlayingUI(video);
+
+  if (ytPlayerReady && ytPlayer) {
+    ytPlayer.loadVideoById(video.videoId);
+  }
+
+  renderYtQueueSheet();
+
+};
+
+
+/* =========================================================
+   YOUTUBE PLAYLIST IMPORT (saved locally in IndexedDB)
+========================================================= */
+
+ytImportBtn.addEventListener("click", () => {
+  importYtPlaylist();
+});
+
+ytPlaylistInput.addEventListener("keydown", event => {
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    importYtPlaylist();
+  }
+
+});
+
+
+function ytSetImportLoading(isLoading) {
+
+  const spinner = ytImportBtn.querySelector(".btn-spinner");
+  const label = ytImportBtn.querySelector(".btn-label");
+
+  if (!spinner || !label) return;
+
+  ytImportBtn.classList.toggle("is-loading", isLoading);
+  spinner.hidden = !isLoading;
+  ytImportBtn.disabled = isLoading;
+
+}
+
+
+async function importYtPlaylist() {
+
+  const value = ytPlaylistInput.value.trim();
+
+  if (!value) {
+    showToast("Paste a YouTube playlist link first.");
+    return;
+  }
+
+  if (!ytProxyConfigured()) {
+    showToast("YouTube import isn't set up yet — see server/README.md.");
+    return;
+  }
+
+  ytSetImportLoading(true);
+
+  try {
+
+    const url =
+      `${YT_PROXY_BASE}/api/youtube/playlist` +
+      `?url=${encodeURIComponent(value)}`;
+
+    const response = await fetch(url);
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data || !data.items) {
+
+      const reason = data?.reason || data?.error || "";
+
+      if (String(reason).toLowerCase().includes("quota")) {
+        showToast("YouTube import is temporarily unavailable (quota).");
+      } else if (response.status === 429) {
+        showToast("Too many requests — try again in a moment.");
+      } else if (response.status === 404) {
+        showToast("Playlist not found or is private.");
+      } else {
+        showToast("Couldn't import that playlist. Check the link and try again.");
+      }
+
+      return;
+
+    }
+
+    if (data.items.length === 0) {
+      showToast("That playlist doesn't have any playable videos.");
+      return;
+    }
+
+    const playlist = {
+      id: data.id,
+      title: data.title || "Imported playlist",
+      items: data.items,
+      addedAt: Date.now()
+    };
+
+    await dbAddPlaylist(playlist);
+
+    const existingIdx = ytPlaylists.findIndex(p => p.id === playlist.id);
+
+    if (existingIdx > -1) {
+      ytPlaylists[existingIdx] = playlist;
+    } else {
+      ytPlaylists.unshift(playlist);
+    }
+
+    renderYtPlaylists();
+
+    ytPlaylistInput.value = "";
+
+    showToast(`Imported "${playlist.title}" (${playlist.items.length} tracks).`);
+
+  } catch (err) {
+
+    showToast("Couldn't reach the import backend. Check your connection.");
+
+  } finally {
+
+    ytSetImportLoading(false);
+
+  }
+
+}
+
+
+async function loadYtPlaylists() {
+
+  try {
+
+    const stored = await dbGetAllPlaylists();
+
+    stored.sort((a, b) => b.addedAt - a.addedAt);
+
+    ytPlaylists = stored;
+
+    renderYtPlaylists();
+
+  } catch (err) {
+    // No saved playlists yet, or IndexedDB unavailable — non-fatal.
+  }
+
+}
+
+
+function renderYtPlaylists() {
+
+  ytPlaylistsTitleEl.hidden = ytPlaylists.length === 0;
+
+  if (ytPlaylists.length === 0) {
+    ytPlaylistsEl.innerHTML = "";
+    return;
+  }
+
+  ytPlaylistsEl.innerHTML = ytPlaylists.map(playlist => {
+
+    const thumb = playlist.items[0]?.thumbnail;
+    const isExpanded = ytExpandedPlaylistId === playlist.id;
+
+    const rowHTML = `
+      <div class="yt-playlist" onclick="ytTogglePlaylistExpand('${playlist.id}')">
+
+        ${
+          thumb
+            ? `<img class="yt-thumb" src="${thumb}" alt="" loading="lazy">`
+            : `<div class="yt-playlist-thumb">♫</div>`
+        }
+
+        <div class="yt-playlist-main">
+          <span class="yt-playlist-title">${escapeHTML(playlist.title)}</span>
+          <span class="yt-playlist-count">${playlist.items.length} track${playlist.items.length === 1 ? "" : "s"}</span>
+        </div>
+
+        <div class="yt-playlist-actions" onclick="event.stopPropagation()">
+          <button class="yt-play-btn" onclick="ytPlayPlaylist('${playlist.id}')">▶ Play</button>
+          <button onclick="ytQueuePlaylist('${playlist.id}')">＋ Queue</button>
+          <button onclick="ytDeletePlaylist('${playlist.id}')">✕ Remove</button>
+        </div>
+
+      </div>
+    `;
+
+    const tracksHTML = isExpanded ? `
+      <div class="yt-playlist-tracks">
+        ${playlist.items.map((video, index) => `
+          <div class="yt-track">
+
+            <img class="yt-thumb" src="${video.thumbnail}" alt="" loading="lazy">
+
+            <div class="yt-track-main">
+              <span class="yt-track-title">${escapeHTML(video.title)}</span>
+              <span class="yt-track-channel">${escapeHTML(video.channel)}</span>
+            </div>
+
+            <div class="yt-track-actions">
+              <button class="yt-play-btn" onclick="ytPlayPlaylistTrack('${playlist.id}', ${index})">▶ Play</button>
+              <button onclick="ytAddPlaylistTrackToQueue('${playlist.id}', ${index})">＋ Queue</button>
+            </div>
+
+          </div>
+        `).join("")}
+      </div>
+    ` : "";
+
+    return rowHTML + tracksHTML;
+
+  }).join("");
+
+}
+
+
+window.ytTogglePlaylistExpand = function(id) {
+
+  ytExpandedPlaylistId = ytExpandedPlaylistId === id ? null : id;
+
+  renderYtPlaylists();
+
+};
+
+
+window.ytPlayPlaylist = function(id) {
+
+  const playlist = ytPlaylists.find(p => p.id === id);
+
+  if (!playlist || playlist.items.length === 0) return;
+
+  playYoutubeVideo(playlist.items[0], playlist.items, 0, { type: "playlist", id });
+
+};
+
+
+window.ytPlayPlaylistTrack = function(id, index) {
+
+  const playlist = ytPlaylists.find(p => p.id === id);
+
+  if (!playlist || !playlist.items[index]) return;
+
+  playYoutubeVideo(playlist.items[index], playlist.items, index, { type: "playlist", id });
+
+};
+
+
+window.ytQueuePlaylist = function(id) {
+
+  const playlist = ytPlaylists.find(p => p.id === id);
+
+  if (!playlist) return;
+
+  ytQueue.push(...playlist.items);
+
+  renderYtQueue();
+  showToast(`Added ${playlist.items.length} tracks to the YouTube queue.`);
+
+};
+
+
+window.ytAddPlaylistTrackToQueue = function(id, index) {
+
+  const playlist = ytPlaylists.find(p => p.id === id);
+
+  if (!playlist || !playlist.items[index]) return;
+
+  ytQueue.push(playlist.items[index]);
+
+  renderYtQueue();
+  showToast("Added to YouTube queue.");
+
+};
+
+
+window.ytDeletePlaylist = async function(id) {
+
+  try {
+
+    await dbDeletePlaylist(id);
+
+    ytPlaylists = ytPlaylists.filter(p => p.id !== id);
+
+    if (ytExpandedPlaylistId === id) ytExpandedPlaylistId = null;
+
+    renderYtPlaylists();
+
+  } catch (err) {
+
+    showToast("Couldn't remove that playlist.");
+
+  }
+
+};
+
+
+loadYtPlaylists();

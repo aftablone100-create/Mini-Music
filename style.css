@@ -569,6 +569,14 @@ main {
   overflow: hidden;
 }
 
+.mini-art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .mini-art-icon {
   transition: transform .3s;
 }
@@ -795,6 +803,14 @@ main {
   font-size: 72px;
   box-shadow: 0 30px 60px -20px rgba(118, 87, 255, .35);
   overflow: hidden;
+}
+
+.full-art-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .full-art-icon {
@@ -1196,4 +1212,89 @@ input[type="range"] {
 .yt-track-actions button.yt-play-btn {
   background: var(--purple);
   color: white;
+}
+
+.yt-import-btn {
+  width: 100%;
+  margin: 14px 0 0;
+}
+
+.yt-playlist {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 14px;
+  animation: trackIn .2s ease both;
+  cursor: pointer;
+}
+
+.yt-playlist:active {
+  background: var(--panel);
+}
+
+.yt-playlist-thumb {
+  width: 64px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--panel2);
+  display: grid;
+  place-items: center;
+  color: var(--purple2);
+  font-size: 18px;
+}
+
+.yt-playlist-main {
+  min-width: 0;
+}
+
+.yt-playlist-title {
+  display: block;
+  font-weight: bold;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yt-playlist-count {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.yt-playlist-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.yt-playlist-actions button {
+  background: var(--panel2);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: bold;
+  padding: 7px 12px;
+  border-radius: 8px;
+  min-height: 30px;
+  white-space: nowrap;
+}
+
+.yt-playlist-actions button:active {
+  transform: scale(.95);
+}
+
+.yt-playlist-actions button.yt-play-btn {
+  background: var(--purple);
+  color: white;
+}
+
+.yt-playlist-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 10px 4px;
 }
