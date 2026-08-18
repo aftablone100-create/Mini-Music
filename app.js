@@ -1777,6 +1777,11 @@ const ytImportBtn = document.getElementById("ytImportBtn");
 const ytPlaylistsTitleEl = document.getElementById("ytPlaylistsTitle");
 const ytPlaylistsEl = document.getElementById("ytPlaylists");
 
+const addToPlaylistSheet = document.getElementById("addToPlaylistSheet");
+const addToPlaylistBackdrop = document.getElementById("addToPlaylistBackdrop");
+const addToPlaylistList = document.getElementById("addToPlaylistList");
+const closeAddToPlaylistBtn = document.getElementById("closeAddToPlaylistBtn");
+
 const miniArtImg = document.getElementById("miniArtImg");
 const fullArtImg = document.getElementById("fullArtImg");
 
@@ -1786,6 +1791,7 @@ let ytSearchTimer = null;
 
 let ytPlaylists = [];             // imported playlists, from IndexedDB
 let ytExpandedPlaylistId = null;  // which playlist's track list is expanded
+let ytPendingAddSong = null;      // video waiting to be added to a saved playlist
 
 let ytPlayer = null;
 let ytPlayerReady = false;
@@ -1947,6 +1953,7 @@ function renderYtResults() {
       <div class="yt-track-actions">
         <button class="yt-play-btn" onclick="ytPlayResult(${index})">▶ Play</button>
         <button onclick="ytAddToQueue(${index})">＋ Queue</button>
+        <button onclick="ytOpenAddToPlaylistFromSearch(${index})">☰ Playlist</button>
       </div>
 
     </div>
@@ -2441,6 +2448,7 @@ function renderYtQueue() {
 
       <div class="yt-track-actions">
         <button class="yt-play-btn" onclick="ytPlayFromQueue(${index})">▶ Play</button>
+        <button onclick="ytOpenAddToPlaylistFromQueue(${index})">☰ Playlist</button>
         <button onclick="ytRemoveFromQueue(${index})">✕ Remove</button>
       </div>
 
@@ -2730,6 +2738,7 @@ function renderYtPlaylists() {
             <div class="yt-track-actions">
               <button class="yt-play-btn" onclick="ytPlayPlaylistTrack('${playlist.id}', ${index})">▶ Play</button>
               <button onclick="ytAddPlaylistTrackToQueue('${playlist.id}', ${index})">＋ Queue</button>
+              <button onclick="ytOpenAddToPlaylistFromPlaylistTrack('${playlist.id}', ${index})">☰ Playlist</button>
             </div>
 
           </div>
@@ -2896,6 +2905,130 @@ window.ytDeletePlaylist = async function(id) {
   } catch (err) {
 
     showToast("Couldn't remove that playlist.");
+
+  }
+
+};
+
+
+/* ---------- add a YouTube song to one of your saved playlists ---------- */
+
+function openAddToPlaylistSheet(video) {
+
+  if (!video) return;
+
+  ytPendingAddSong = video;
+
+  if (ytPlaylists.length === 0) {
+
+    addToPlaylistList.innerHTML = `
+      <div class="empty">
+        <div>♫</div>
+        <h3>No saved playlists yet</h3>
+        <p>Import a YouTube playlist first, then you can add songs to it.</p>
+      </div>
+    `;
+
+  } else {
+
+    addToPlaylistList.innerHTML = ytPlaylists.map(playlist => {
+
+      const thumb = playlist.items[0]?.thumbnail;
+      const alreadyIn = playlist.items.some(item => item.videoId === video.videoId);
+
+      return `
+        <button class="playlist-pick-item" onclick="ytAddSongToPlaylist('${playlist.id}')">
+
+          ${
+            thumb
+              ? `<img class="playlist-pick-thumb" src="${thumb}" alt="" loading="lazy">`
+              : `<div class="playlist-pick-thumb">♫</div>`
+          }
+
+          <div class="playlist-pick-main">
+            <strong>${escapeHTML(playlist.title)}</strong>
+            <small>${playlist.items.length} track${playlist.items.length === 1 ? "" : "s"}${alreadyIn ? " · already added" : ""}</small>
+          </div>
+
+        </button>
+      `;
+
+    }).join("");
+
+  }
+
+  addToPlaylistSheet.classList.add("open");
+
+}
+
+
+function closeAddToPlaylistSheet() {
+  addToPlaylistSheet.classList.remove("open");
+  ytPendingAddSong = null;
+}
+
+
+addToPlaylistBackdrop.addEventListener("click", closeAddToPlaylistSheet);
+closeAddToPlaylistBtn.addEventListener("click", closeAddToPlaylistSheet);
+
+
+window.ytOpenAddToPlaylistFromSearch = function(index) {
+  openAddToPlaylistSheet(ytLastResults[index]);
+};
+
+
+window.ytOpenAddToPlaylistFromQueue = function(index) {
+  openAddToPlaylistSheet(ytQueue[index]);
+};
+
+
+window.ytOpenAddToPlaylistFromPlaylistTrack = function(playlistId, index) {
+
+  const playlist = ytPlaylists.find(p => p.id === playlistId);
+
+  if (!playlist || !playlist.items[index]) return;
+
+  openAddToPlaylistSheet(playlist.items[index]);
+
+};
+
+
+window.ytAddSongToPlaylist = async function(playlistId) {
+
+  const video = ytPendingAddSong;
+  const playlist = ytPlaylists.find(p => p.id === playlistId);
+
+  if (!video || !playlist) return;
+
+  if (playlist.items.some(item => item.videoId === video.videoId)) {
+    showToast("That song is already in this playlist.");
+    closeAddToPlaylistSheet();
+    return;
+  }
+
+  const updated = {
+    ...playlist,
+    items: [...playlist.items, video]
+  };
+
+  try {
+
+    await dbAddPlaylist(updated);
+
+    const idx = ytPlaylists.findIndex(p => p.id === playlistId);
+    if (idx > -1) ytPlaylists[idx] = updated;
+
+    renderYtPlaylists();
+
+    showToast(`Added to "${updated.title}".`);
+
+  } catch (err) {
+
+    showToast("Couldn't save that playlist change.");
+
+  } finally {
+
+    closeAddToPlaylistSheet();
 
   }
 
