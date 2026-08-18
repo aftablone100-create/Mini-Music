@@ -169,15 +169,29 @@ function extractPlaylistId(input) {
     return raw;
   }
 
-  try {
+  // People commonly paste links without a scheme (copied from an app's
+  // share sheet, or typed as "youtube.com/..."/"www.youtube.com/...").
+  // `new URL()` throws on those, so retry with "https://" prefixed
+  // whenever the first parse attempt fails.
+  const candidates = [raw];
 
-    const parsed = new URL(raw);
-    const listParam = parsed.searchParams.get("list");
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw)) {
+    candidates.push(`https://${raw}`);
+  }
 
-    if (listParam) return listParam;
+  for (const candidate of candidates) {
 
-  } catch (e) {
-    // Not a valid URL and not a bare ID — fall through to null.
+    try {
+
+      const parsed = new URL(candidate);
+      const listParam = parsed.searchParams.get("list");
+
+      if (listParam) return listParam;
+
+    } catch (e) {
+      // Not a valid URL — try the next candidate, if any.
+    }
+
   }
 
   return null;
@@ -344,5 +358,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`Mini Music YouTube proxy running on port ${PORT}`);
 });
+
 
 
