@@ -2708,6 +2708,7 @@ function renderYtPlaylists() {
         <div class="yt-playlist-actions" onclick="event.stopPropagation()">
           <button class="yt-play-btn" onclick="ytPlayPlaylist('${playlist.id}')">▶ Play</button>
           <button onclick="ytQueuePlaylist('${playlist.id}')">＋ Queue</button>
+          <button onclick="ytRefreshPlaylist('${playlist.id}')" id="ytRefreshBtn-${playlist.id}">⟳ Refresh</button>
           <button onclick="ytDeletePlaylist('${playlist.id}')">✕ Remove</button>
         </div>
 
@@ -2798,6 +2799,84 @@ window.ytAddPlaylistTrackToQueue = function(id, index) {
 
   renderYtQueue();
   showToast("Added to YouTube queue.");
+
+};
+
+
+window.ytRefreshPlaylist = async function(id) {
+
+  const playlist = ytPlaylists.find(p => p.id === id);
+
+  if (!playlist) return;
+
+  if (!ytProxyConfigured()) {
+    showToast("YouTube import isn't set up yet — see server/README.md.");
+    return;
+  }
+
+  const btn = document.getElementById(`ytRefreshBtn-${id}`);
+  const originalLabel = btn ? btn.textContent : "";
+
+  if (btn) {
+    btn.textContent = "…";
+    btn.disabled = true;
+  }
+
+  try {
+
+    const url =
+      `${YT_PROXY_BASE}/api/youtube/playlist` +
+      `?id=${encodeURIComponent(id)}`;
+
+    const response = await fetch(url);
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data || !data.items) {
+
+      const reason = data?.reason || data?.error || "";
+
+      if (String(reason).toLowerCase().includes("quota")) {
+        showToast("YouTube refresh is temporarily unavailable (quota).");
+      } else if (response.status === 429) {
+        showToast("Too many requests — try again in a moment.");
+      } else if (response.status === 404) {
+        showToast("That playlist is no longer available.");
+      } else {
+        showToast("Couldn't refresh that playlist. Try again later.");
+      }
+
+      return;
+
+    }
+
+    const refreshed = {
+      id: data.id,
+      title: data.title || playlist.title,
+      items: data.items,
+      addedAt: playlist.addedAt
+    };
+
+    await dbAddPlaylist(refreshed);
+
+    const idx = ytPlaylists.findIndex(p => p.id === id);
+    if (idx > -1) ytPlaylists[idx] = refreshed;
+
+    renderYtPlaylists();
+
+    showToast(`Refreshed "${refreshed.title}" (${refreshed.items.length} tracks).`);
+
+  } catch (err) {
+
+    showToast("Couldn't reach the import backend. Check your connection.");
+
+  } finally {
+
+    if (btn) {
+      btn.textContent = originalLabel;
+      btn.disabled = false;
+    }
+
+  }
 
 };
 
