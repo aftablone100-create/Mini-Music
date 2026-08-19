@@ -1,3 +1,38 @@
+/* =========================
+   BETA WELCOME NOTICE
+   (self-contained — doesn't touch playback/library/YouTube state)
+========================= */
+
+(function setupBetaNotice() {
+
+  const STORAGE_KEY = "miniMusicHideBetaNotice";
+
+  const betaNotice = document.getElementById("betaNotice");
+  const betaContinueBtn = document.getElementById("betaContinueBtn");
+  const betaDontShowAgain = document.getElementById("betaDontShowAgain");
+
+  if (!betaNotice || !betaContinueBtn) return;
+
+  const alreadyDismissed = localStorage.getItem(STORAGE_KEY) === "true";
+
+  if (alreadyDismissed) {
+    betaNotice.classList.add("dismissed");
+    return;
+  }
+
+  betaContinueBtn.addEventListener("click", () => {
+
+    if (betaDontShowAgain && betaDontShowAgain.checked) {
+      localStorage.setItem(STORAGE_KEY, "true");
+    }
+
+    betaNotice.classList.add("dismissed");
+
+  });
+
+})();
+
+
 const audio = document.getElementById("audio");
 const fileInput = document.getElementById("fileInput");
 
